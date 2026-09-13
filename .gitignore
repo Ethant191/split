@@ -1,0 +1,20 @@
+# 本地验证脚本（含本地绝对路径，不随仓库发布）
+tests/_verify-real-format.js
+tests/_browser-check.js
+tests/_browser-out/
+
+# 依赖与系统文件
+node_modules/
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# 任何可能被误拖进来的凭证文件
+*.txt
+!requirements.txt
+*.jsonl
+*.env
+.env.*
+*.key
+*.pem
+credentials*
