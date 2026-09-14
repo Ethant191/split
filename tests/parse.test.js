@@ -17,13 +17,13 @@ function loadCore() {
   const html = fs.readFileSync(HTML, 'utf8');
   const m = html.match(/\/\* ==== PARSE-CORE-START ==== \*\/([\s\S]*?)\/\* ==== PARSE-CORE-END ==== \*\//);
   if (!m) throw new Error('在 index.html 里找不到 PARSE-CORE 标记，测试无法抽取解析核心');
-  const src = m[1] + '\nreturn { stripBom, parseLine, splitAccounts, SEP };';
+  const src = m[1] + '\nreturn { stripBom, parseLine, parseAccountLine, parseMailboxCredentialLine, splitAccounts, SEP };';
   // eslint-disable-next-line no-new-func
   return new Function('module', 'exports', src)({ exports: {} }, {});
 }
 
 const core = loadCore();
-const { parseLine, splitAccounts } = core;
+const { parseLine, parseAccountLine, parseMailboxCredentialLine, splitAccounts } = core;
 
 /* ---------- 极简断言 ---------- */
 let pass = 0;
@@ -98,12 +98,11 @@ const line = (email, pw, totp, at) =>
   eq(r.at, AT, '三段+尾 - ：AT');
 }
 
-/* ---------- 7. AT 非 JWT（兜底走最后一个分隔符） ---------- */
+/* ---------- 7. 非 JWT AT 必须拒绝，不能误把其他字段当 AT ---------- */
 {
   const r = parseLine('a@b.com----Pw123456----' + TOTP + '----zzzz1111yyyy2222');
-  eq(r.status, 'ok', '非 JWT 的 AT：应走兜底且成功');
-  eq(r.at, 'zzzz1111yyyy2222', '非 JWT 的 AT：内容正确');
-  eq(r.totp, TOTP, '非 JWT 的 AT：2FA 仍可识别');
+  eq(r.status, 'bad', '非 JWT 的 AT：必须报错');
+  eq(r.reason, 'AT 格式不正确（工作台导出的 AT 应以 eyJ 开头，且包含 3 段）', '非 JWT 的 AT：错误原因');
 }
 
 /* ---------- 8. 应跳过的行 ---------- */
@@ -120,11 +119,56 @@ const line = (email, pw, totp, at) =>
 {
   eq(parseLine('a@b.com').status, 'bad', '只有邮箱：应失败');
   eq(parseLine('a@b.com----Pw123456').status, 'bad', '缺 AT：应失败');
+  const missingAt = parseLine(`a@b.com----Pw123456----${TOTP}`);
+  eq(missingAt.status, 'bad', '邮箱+密码+2FA、缺 AT：应失败');
+  eq(missingAt.reason, '缺少 AT：末尾是 2FA 密钥', '邮箱+密码+2FA、缺 AT：应给出准确原因');
   eq(parseLine(`noemail----Pw123456----${TOTP}----${AT}`).status, 'bad', '邮箱无 @：应失败');
   eq(parseLine(`a@b.com--------${TOTP}----${AT}`).status, 'bad', '密码为空：应失败');
+  eq(parseLine(`a@b.com----Pw123456----${TOTP}${AT}`).status, 'bad', 'AT 前缺少分隔符：应失败');
 }
 
-/* ---------- 10. 整段拆分：计数与行对应 ---------- */
+/* ---------- 10. 工作台邮箱凭证 + AT ---------- */
+{
+  // refresh_token 里允许继续出现分隔符；拆分后凭证必须逐字符保持原样。
+  const credential = 'mail001@outlook.com----MailboxPass----11112222-3333-4444-5555-666677778888----refresh-part-a----refresh-part-b';
+  const raw = credential + '----' + AT;
+  const r = parseMailboxCredentialLine(raw);
+  eq(r.status, 'ok', '邮箱凭证+AT：状态应为 ok');
+  eq(r.email, 'mail001@outlook.com', '邮箱凭证+AT：邮箱');
+  eq(r.credential, credential, '邮箱凭证+AT：完整凭证必须原样保留');
+  eq(r.at, AT, '邮箱凭证+AT：AT');
+  eq(parseLine(raw, 'mailbox').credential, credential, '统一入口：mailbox 模式应走邮箱凭证解析');
+  const wrongAccountMode = parseAccountLine(raw);
+  eq(wrongAccountMode.status, 'bad', '邮箱凭证误选账号模式：必须拒绝');
+  eq(wrongAccountMode.reason, '检测到完整邮箱凭证，请选择「完整邮箱凭证----AT」格式', '邮箱凭证误选账号模式：提示切换格式');
+  eq(wrongAccountMode.expectedFormat, 'mailbox', '邮箱凭证误选账号模式：标记正确模式');
+  const wholeWrongMode = splitAccounts(raw, 'account');
+  eq(wholeWrongMode.formatMismatches.length, 1, '邮箱凭证误选账号模式：整段结果应标记格式错误');
+  eq(parseMailboxCredentialLine(credential + AT).status, 'bad', '邮箱凭证+AT：AT 前缺分隔符应失败');
+  eq(parseMailboxCredentialLine('mail001@outlook.com----MailboxPass--------refresh----' + AT).status,
+     'bad', '邮箱凭证+AT：缺 client_id 应失败');
+
+  const text = [raw, '# 注释', '坏行', raw].join('\n');
+  const res = splitAccounts(text, 'mailbox');
+  eq(res.format, 'mailbox', '邮箱凭证+AT：结果应标记 mailbox 格式');
+  eq(res.okCount, 2, '邮箱凭证+AT：成功条数');
+  eq(res.skipCount, 1, '邮箱凭证+AT：注释应跳过');
+  eq(res.badCount, 1, '邮箱凭证+AT：坏行应报错');
+  eq(res.fileA.split('\r\n').filter(Boolean)[0], credential, '邮箱凭证+AT：文件 1 内容');
+  eq(res.fileB.split('\r\n').filter(Boolean)[0], AT, '邮箱凭证+AT：文件 2 内容');
+  eq(res.fileBad, '坏行\r\n', '邮箱凭证+AT：失败原始行文件应逐行保留原文');
+}
+
+/* ---------- 11. 账密格式误选邮箱凭证模式 ---------- */
+{
+  const raw = `demo001@outlook.com----Ab3xK9mQ2pLw----${TOTP}----${AT}`;
+  const r = parseMailboxCredentialLine(raw);
+  eq(r.status, 'bad', '账密误选邮箱凭证模式：必须拒绝');
+  eq(r.reason, '检测到账密格式，请选择「邮箱----密码----2FA密钥----AT」格式', '账密误选邮箱凭证模式：提示切换格式');
+  eq(r.expectedFormat, 'account', '账密误选邮箱凭证模式：标记正确模式');
+}
+
+/* ---------- 12. 整段拆分：计数与行对应 ---------- */
 {
   const text = [
     `u1@outlook.com----Pw1a2b3c4d5e----${TOTP}----${AT}`,
@@ -135,7 +179,7 @@ const line = (email, pw, totp, at) =>
     `u3@outlook.com----Pw3a2b3c4d5e----${TOTP}----${AT}`
   ].join('\n');
 
-  const res = splitAccounts(text, false);
+  const res = splitAccounts(text);
   eq(res.okCount, 3, '整段：成功 3 条');
   eq(res.skipCount, 2, '整段：跳过 2 条（空行 + 注释）');
   eq(res.badCount, 1, '整段：失败 1 条');
@@ -151,10 +195,10 @@ const line = (email, pw, totp, at) =>
   ok(Array.isArray(res.issues), '整段：必须返回 issues 数组（界面依赖它）');
   eq(res.issues.length, 1, '整段：issues 明细条数');
   eq(res.issues[0].lineNo, 5, '整段：issues 应带正确行号');
-  eq(res.issues[0].reason, '找不到分隔符 ----', '整段：issues 应带失败原因');
+  eq(res.issues[0].reason, '找不到「----AT」分隔符', '整段：issues 应带失败原因');
 }
 
-/* ---------- 11. 保留空行对齐模式 ---------- */
+/* ---------- 13. 失败行不写入下载文件 ---------- */
 {
   const text = [
     `u1@outlook.com----Pw1a2b3c4d5e----${TOTP}----${AT}`,
@@ -162,29 +206,28 @@ const line = (email, pw, totp, at) =>
     `u2@outlook.com----Pw2a2b3c4d5e----${TOTP}----${AT}`
   ].join('\n');
 
-  const aligned = splitAccounts(text, true);
-  eq(aligned.countA, 3, '对齐模式：文件 1 应含占位行');
-  eq(aligned.countB, 3, '对齐模式：文件 2 应含占位行');
-  eq(aligned.fileA.split('\r\n')[1], '', '对齐模式：第 2 行应为空占位');
-
-  const skipped = splitAccounts(text, false);
-  eq(skipped.countA, 2, '跳过模式：文件 1 只有 2 行');
-  eq(skipped.countB, 2, '跳过模式：文件 2 只有 2 行');
+  const res = splitAccounts(text);
+  eq(res.countA, 2, '失败行：文件 1 只有成功行');
+  eq(res.countB, 2, '失败行：文件 2 只有成功行');
+  eq(res.issues.length, 1, '失败行：应显示在错误列表');
+  eq(res.issues[0].lineNo, 2, '失败行：应保留原始行号');
+  eq(res.fileBad, '坏行\r\n', '失败行：导出文件应只包含原始坏行');
 }
 
-/* ---------- 12. BOM / 换行符 / 末尾无换行 ---------- */
+/* ---------- 14. BOM / 换行符 / 末尾无换行 ---------- */
 {
   const text = '\uFEFF' + `u1@outlook.com----Pw1a2b3c4d5e----${TOTP}----${AT}`;
-  const r = splitAccounts(text, false);
+  const r = splitAccounts(text);
   eq(r.okCount, 1, 'BOM：应被剥掉且解析成功');
   eq(r.rows[0].status === 'ok' && r.rows[0].email, 'u1@outlook.com', 'BOM：邮箱没被污染');
 
   const crlf = `u1@outlook.com----Pw1a2b3c4d5e----${TOTP}----${AT}\r\nu2@outlook.com----Pw2a2b3c4d5e----${TOTP}----${AT}`;
-  eq(splitAccounts(crlf, false).okCount, 2, 'CRLF：两行都能解析');
-  eq(splitAccounts(crlf + '\r\n', false).okCount, 2, 'CRLF+末尾换行：不多算行');
+  eq(splitAccounts(crlf).okCount, 2, 'CRLF：两行都能解析');
+  eq(splitAccounts(crlf + '\r\n').okCount, 2, 'CRLF+末尾换行：不多算行');
+  eq(splitAccounts(crlf + '\r\n').skipCount, 0, '末尾换行：不应算作空行 / 注释');
 }
 
-/* ---------- 13. 非 ASCII 邮箱（国际域名） ---------- */
+/* ---------- 15. 非 ASCII 邮箱（国际域名） ---------- */
 {
   const r = parseLine(`测试@outlook.com----Pw1a2b3c4d5e----${TOTP}----${AT}`);
   eq(r.status, 'ok', '非 ASCII 邮箱：应能解析');

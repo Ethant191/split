@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>账号拆分器 — 把「邮箱-密码-2FA-AT」拆成两个 txt</title>
-<meta name="description" content="把一行一条的「邮箱----密码----2FA----AT」账号文本，拆分成「邮箱----密码----2FA」和「AT」两个 txt 文件。全部在浏览器本地完成，不上传任何数据。">
+<title>账号解析器</title>
+<meta name="description" content="本地解析工作台导出的「账号 + AT」或「邮箱凭证 + AT」文本。全部在浏览器本地完成，不上传任何数据。">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✂️</text></svg>">
 <style>
 :root{
@@ -13,6 +13,8 @@
   --ok:#1a7f37; --ok-bg:#dafbe1; --warn:#9a6700; --warn-bg:#fff8c5;
   --danger:#cf222e; --danger-bg:#ffebe9; --code-bg:#eff1f3;
   --radius:10px;
+  --font-ui:"Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Noto Sans CJK SC","Segoe UI",sans-serif;
+  --font-mono:"Cascadia Mono","Sarasa Mono SC","Microsoft YaHei UI",Consolas,monospace;
 }
 @media (prefers-color-scheme: dark){
   :root{
@@ -23,18 +25,18 @@
   }
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html{-webkit-text-size-adjust:100%}
 body{
   margin:0; background:var(--bg); color:var(--text);
-  font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
-  font-size:15px; line-height:1.6;
+  font-family:var(--font-ui); font-size:15px; line-height:1.65;
+  font-synthesis:none;
 }
 .wrap{max-width:880px;margin:0 auto;padding:40px 18px 80px}
-header h1{font-size:clamp(1.5rem,4vw,2rem);margin:0 0 8px;letter-spacing:-.02em}
-header .sub{margin:0;color:var(--muted);font-size:.95rem}
+header h1{font-family:var(--font-ui);font-size:clamp(1.65rem,4vw,2.1rem);font-weight:800;margin:0 0 8px;letter-spacing:.01em}
 code{
   background:var(--code-bg);border-radius:5px;padding:1px 5px;
-  font-family:ui-monospace,SFMono-Regular,Consolas,"Courier New",monospace;
+  font-family:var(--font-mono);
   font-size:.88em;
 }
 .privacy{
@@ -47,30 +49,24 @@ code{
   padding:20px;margin-bottom:16px;
 }
 .card h2{
-  font-size:1.02rem;margin:0 0 14px;display:flex;align-items:center;gap:9px;font-weight:600;
+  font-family:var(--font-ui);font-size:1.05rem;margin:0 0 14px;display:flex;align-items:center;gap:9px;font-weight:700;
 }
 .step{
   display:inline-flex;align-items:center;justify-content:center;
   width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;
   font-size:.78rem;font-weight:700;flex:none;
 }
-.drop{
-  border:1.5px dashed var(--line);border-radius:var(--radius);
-  padding:22px 16px;text-align:center;color:var(--muted);font-size:.92rem;
-  transition:border-color .15s,background .15s;margin-bottom:12px;
-}
-.drop.over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
-.drop p{margin:0 0 6px}
-.drop p:last-child{margin-bottom:0}
-.drop .hint{font-size:.84rem;opacity:.85}
+.input-box{border:1.5px dashed var(--line);border-radius:var(--radius);overflow:hidden;transition:border-color .15s,background .15s}
+.input-box.over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.input-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;color:var(--muted);font-size:.88rem}
+.input-toolbar p{margin:0}
 textarea{
-  width:100%;min-height:170px;resize:vertical;padding:12px;
-  border:1px solid var(--line);border-radius:var(--radius);
+  display:block;width:100%;min-height:170px;resize:vertical;padding:12px;
+  border:0;border-top:1px solid var(--line-soft);border-radius:0;
   background:var(--bg);color:var(--text);
-  font-family:ui-monospace,SFMono-Regular,Consolas,"Courier New",monospace;
-  font-size:12.5px;line-height:1.55;outline:none;
+  font-family:var(--font-mono);font-size:13px;line-height:1.65;outline:none;
 }
-textarea:focus{border-color:var(--accent)}
+textarea:focus{outline:2px solid color-mix(in srgb,var(--accent) 28%,transparent);outline-offset:-2px}
 .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;flex-wrap:wrap}
 .row-right{display:flex;gap:8px}
 .stat{color:var(--muted);font-size:.86rem}
@@ -88,47 +84,49 @@ button.link{
   font-size:inherit;cursor:pointer;
 }
 button.wide{width:100%;padding:11px 14px;font-size:.95rem}
-.opt{display:flex;align-items:flex-start;gap:8px;font-size:.88rem;color:var(--muted);margin-bottom:14px;cursor:pointer}
-.opt input{margin:3px 0 0;flex:none}
-.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
-.metric{border:1px solid var(--line-soft);border-radius:var(--radius);padding:12px;text-align:center}
-.metric b{display:block;font-size:1.45rem;line-height:1.3}
-.metric span{font-size:.8rem;color:var(--muted)}
+.format-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 14px}
+.format-option{display:flex;align-items:flex-start;gap:9px;border:1px solid var(--line);border-radius:var(--radius);padding:11px 12px;cursor:pointer;color:var(--text)}
+.format-option:has(input:checked){border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.format-option input{margin:4px 0 0;flex:none}
+.format-option > span{display:block;font-family:var(--font-ui);font-size:.96rem;line-height:1.45;font-weight:700;overflow-wrap:anywhere}
+.metrics{display:flex;align-items:center;gap:22px;padding:0 0 14px;margin-bottom:14px;border-bottom:1px solid var(--line-soft)}
+.metric{display:flex;align-items:baseline;gap:6px}
+.metric b{font-size:1.45rem;line-height:1.1}
+.metric span{font-size:.85rem;color:var(--muted)}
 .metric.ok b{color:var(--ok)}
 .metric.warn b{color:var(--warn)}
 .metric.bad b{color:var(--danger)}
 .downloads{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-.dl{border:1px solid var(--line-soft);border-radius:var(--radius);padding:15px;display:flex;flex-direction:column;gap:9px}
+.dl{border:1px solid var(--line-soft);border-radius:var(--radius);padding:15px}
+.bad-dl{grid-column:1/-1;border-color:color-mix(in srgb,var(--danger) 35%,var(--line));background:color-mix(in srgb,var(--danger) 4%,transparent)}
+.dl-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
 .dl-title{font-size:.78rem;color:var(--muted);font-weight:600;letter-spacing:.03em}
 .dl-body{
-  font-family:ui-monospace,Consolas,monospace;font-size:11.5px;
+  margin-top:5px;font-family:var(--font-mono);font-size:11.5px;
   background:var(--code-bg);border-radius:6px;padding:7px 9px;
   overflow-x:auto;white-space:nowrap;color:var(--text);
 }
-.dl-count{font-size:.83rem;color:var(--muted)}
-.dl button{width:100%}
+.dl-count{flex:none;color:var(--accent);font-size:.82rem;font-weight:700;white-space:nowrap;padding-top:1px}
+.dl-actions{display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:8px}
+.bad-dl .dl-actions{grid-template-columns:1fr}
+.dl-actions button{width:100%;min-width:0}
 details{margin-top:18px;border-top:1px solid var(--line-soft);padding-top:14px}
 summary{cursor:pointer;font-size:.9rem;color:var(--muted);font-weight:600}
 summary:hover{color:var(--text)}
-table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12.5px}
-th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line-soft);white-space:nowrap}
-th{color:var(--muted);font-weight:600;font-size:.8rem}
-td.mono{font-family:ui-monospace,Consolas,monospace}
-.badge{display:inline-block;padding:1px 7px;border-radius:20px;font-size:.76rem;font-weight:600}
-.badge.ok{background:var(--ok-bg);color:var(--ok)}
-.badge.bad{background:var(--danger-bg);color:var(--danger)}
-.badge.skip{background:var(--code-bg);color:var(--muted)}
 .issues{margin-top:12px;font-size:.86rem}
 .issues li{margin-bottom:5px;color:var(--danger)}
 .issues code{color:inherit}
-footer{margin-top:30px;text-align:center;color:var(--muted);font-size:.82rem;line-height:1.8}
 .tip{margin-top:16px;font-size:.85rem;color:var(--muted);border-left:3px solid var(--line);padding-left:12px}
+.format-alert{margin:0 0 14px;padding:12px 14px;border:1px solid color-mix(in srgb,var(--danger) 60%,var(--line));border-radius:var(--radius);background:var(--danger-bg);color:var(--danger);font-size:.9rem;line-height:1.55}
+.format-alert strong{display:block;margin-bottom:2px;font-weight:700}
 @media (max-width:640px){
   .wrap{padding:26px 13px 60px}
   .card{padding:16px}
   .downloads{grid-template-columns:1fr}
-  .metrics{grid-template-columns:repeat(3,1fr);gap:7px}
-  .metric b{font-size:1.2rem}
+  .metrics{gap:16px}
+  .metric b{font-size:1.25rem}
+  .format-options{grid-template-columns:1fr}
+  .dl-actions{grid-template-columns:minmax(0,1fr) 82px}
 }
 </style>
 </head>
@@ -136,8 +134,7 @@ footer{margin-top:30px;text-align:center;color:var(--muted);font-size:.82rem;lin
 <div class="wrap">
 
   <header>
-    <h1>账号拆分器</h1>
-    <p class="sub">把一行一条的 <code>邮箱----密码----2FA----AT</code>，拆成两个 txt 文件</p>
+    <h1>账号解析器</h1>
   </header>
 
   <div class="privacy">
@@ -146,54 +143,89 @@ footer{margin-top:30px;text-align:center;color:var(--muted);font-size:.82rem;lin
 
   <section class="card">
     <h2><span class="step">1</span>输入账号文本</h2>
-    <div class="drop" id="drop">
-      <p>把 txt 文件拖到这里，或 <button class="link" id="pick" type="button">点击选择文件</button></p>
-      <p class="hint">也可以直接把内容粘贴到下面的框里</p>
+    <div class="format-options" role="radiogroup" aria-label="输入格式">
+      <label class="format-option">
+        <input type="radio" name="format" value="account" checked>
+        <span>邮箱----密码----2FA密钥----AT</span>
+      </label>
+      <label class="format-option">
+        <input type="radio" name="format" value="mailbox">
+        <span>完整邮箱凭证----AT</span>
+      </label>
     </div>
-    <input type="file" id="file" accept=".txt,.csv,text/plain" hidden>
-    <textarea id="input" spellcheck="false" autocomplete="off"
-      placeholder="每行一条，格式：&#10;邮箱----密码----2FA密钥----AT&#10;&#10;示例：&#10;test001@outlook.com----Ab3xK9mQ2pLw----JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP----eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.abc123"></textarea>
+    <p class="hint" id="formatHint">账号模式会输出「邮箱----密码----2FA密钥」与 AT 两个文件。</p>
+    <div class="input-box" id="inputBox">
+      <div class="input-toolbar">
+        <p>直接粘贴账号文本，或将 txt 文件拖入此区域</p>
+        <button class="link" id="pick" type="button">选择文件</button>
+      </div>
+      <input type="file" id="file" accept=".txt,.csv,text/plain" hidden>
+      <textarea id="input" spellcheck="false" autocomplete="off"
+        placeholder="每行一条：邮箱----密码----2FA密钥----AT"></textarea>
+    </div>
     <div class="row">
       <span class="stat" id="inputStat">0 行</span>
       <div class="row-right">
-        <button type="button" id="demo">填入示例</button>
         <button type="button" id="clear">清空</button>
       </div>
     </div>
   </section>
 
   <section class="card">
-    <h2><span class="step">2</span>开始拆分</h2>
-    <label class="opt">
-      <input type="checkbox" id="align">
-      <span>遇到无法解析的行时保留空行（保持两个文件行号一一对应；默认跳过）</span>
-    </label>
-    <button class="primary wide" id="run" type="button">开始拆分</button>
+    <h2><span class="step">2</span>开始解析</h2>
+    <div class="format-alert" id="formatAlert" role="alert" hidden>
+      <strong id="formatAlertTitle">格式选择错误</strong>
+      <span id="formatAlertText"></span>
+    </div>
+    <button class="primary wide" id="run" type="button">开始解析</button>
   </section>
 
   <section class="card" id="resultCard" hidden>
     <h2><span class="step">3</span>下载结果</h2>
 
     <div class="metrics">
-      <div class="metric ok"><b id="mOk">0</b><span>成功拆出</span></div>
-      <div class="metric warn"><b id="mSkip">0</b><span>已忽略</span></div>
+      <div class="metric ok"><b id="mOk">0</b><span>解析成功</span></div>
       <div class="metric bad"><b id="mBad">0</b><span>无法解析</span></div>
     </div>
 
     <div class="downloads">
       <div class="dl">
-        <div class="dl-title">文件 1</div>
-        <div class="dl-body">邮箱----密码----2FA密钥</div>
-        <div class="dl-count" id="c1">0 行</div>
-        <button class="primary" id="dl1" type="button">下载 邮箱-密码-2FA.txt</button>
-        <button id="cp1" type="button">复制内容</button>
+        <div class="dl-top">
+          <div>
+            <div class="dl-title">文件 1</div>
+            <div class="dl-body" id="fileAFormat">邮箱----密码----2FA密钥</div>
+          </div>
+          <div class="dl-count" id="c1">0 条</div>
+        </div>
+        <div class="dl-actions">
+          <button class="primary" id="dl1" type="button">下载 邮箱-密码-2FA.txt</button>
+          <button id="cp1" type="button">复制</button>
+        </div>
       </div>
       <div class="dl">
-        <div class="dl-title">文件 2</div>
-        <div class="dl-body">AT（访问令牌）</div>
-        <div class="dl-count" id="c2">0 行</div>
-        <button class="primary" id="dl2" type="button">下载 AT.txt</button>
-        <button id="cp2" type="button">复制内容</button>
+        <div class="dl-top">
+          <div>
+            <div class="dl-title">文件 2</div>
+            <div class="dl-body">AT（访问令牌）</div>
+          </div>
+          <div class="dl-count" id="c2">0 条</div>
+        </div>
+        <div class="dl-actions">
+          <button class="primary" id="dl2" type="button">下载 AT.txt</button>
+          <button id="cp2" type="button">复制</button>
+        </div>
+      </div>
+      <div class="dl bad-dl" id="badDownload" hidden>
+        <div class="dl-top">
+          <div>
+            <div class="dl-title">解析失败原始行</div>
+            <div class="dl-body">原始内容，一行一条（不含错误说明）</div>
+          </div>
+          <div class="dl-count" id="cBad">0 条</div>
+        </div>
+        <div class="dl-actions">
+          <button class="primary" id="dlBad" type="button">下载失败原始行.txt</button>
+        </div>
       </div>
     </div>
 
@@ -201,21 +233,11 @@ footer{margin-top:30px;text-align:center;color:var(--muted);font-size:.82rem;lin
       两个文件的行是<strong>一一对应</strong>的：文件 1 的第 1 行，对应文件 2 的第 1 行。可以分开使用。
     </div>
 
-    <details id="previewBox" hidden>
-      <summary>查看解析明细（前 10 行）</summary>
-      <div id="preview"></div>
-    </details>
-
     <details id="issueBox" hidden>
       <summary id="issueSummary">无法解析的行</summary>
       <ul class="issues" id="issues"></ul>
     </details>
   </section>
-
-  <footer>
-    单文件网页 · 可另存到本地离线使用<br>
-    支持的输入格式：<code>邮箱----密码----2FA----AT</code>（每行一条）
-  </footer>
 
 </div>
 
@@ -231,54 +253,91 @@ function stripBom(text) {
 }
 
 /**
- * 解析单行：邮箱----密码----2FA----AT
+ * 从一行末尾剥离工作台导出的 JWT AT。AT 前必须有分隔符，
+ * 且 AT 需以 eyJ 开头、由 3 段组成，避免把 2FA 密钥误判为 AT。
+ * @returns {{before?:string, at?:string, reason?:string}}
+ */
+function splitAtTail(s) {
+  var m = s.match(/^(.*)----(eyJ[A-Za-z0-9_\-]*\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)$/);
+  if (m) return { before: m[1], at: m[2] };
+  if (/eyJ[A-Za-z0-9_\-]*\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+$/.test(s)) {
+    return { reason: 'AT 前缺少分隔符 ' + SEP };
+  }
+
+  var li = s.lastIndexOf(SEP);
+  if (li < 0) return { reason: '找不到「' + SEP + 'AT」分隔符' };
+  var tail = s.slice(li + SEP.length).trim();
+  if (!tail) return { reason: 'AT 段为空' };
+  if (/^[A-Z2-7]{16,64}$/.test(tail)) return { reason: '缺少 AT：末尾是 2FA 密钥' };
+  return { reason: 'AT 格式不正确（工作台导出的 AT 应以 eyJ 开头，且包含 3 段）' };
+}
+
+function hasEmail(value) {
+  return String(value || '').trim().indexOf('@') >= 0;
+}
+
+function isTotpSecret(value) {
+  return /^[A-Z2-7]{16,64}$/.test(String(value || '').trim());
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+}
+
+/* 工作台「免密 AT」导出：邮箱----邮箱密码----client_id(UUID)----RT----AT。
+ * 以 UUID client_id 作为高置信度特征，避免把密码中正常出现的分隔符误判为邮箱凭证。 */
+function looksLikeWorkbenchMailboxCredential(value) {
+  var parts = String(value || '').split(SEP);
+  return parts.length >= 4
+    && hasEmail(parts[0])
+    && Boolean(String(parts[1] || '').trim())
+    && isUuid(parts[2])
+    && Boolean(parts.slice(3).join(SEP).trim());
+}
+
+function looksLikeAccountCredential(value) {
+  var parts = String(value || '').split(SEP);
+  return (parts.length === 2 && hasEmail(parts[0]) && Boolean(String(parts[1] || '').trim()))
+    || (parts.length === 3 && hasEmail(parts[0]) && Boolean(String(parts[1] || '').trim()) && isTotpSecret(parts[2]));
+}
+
+/**
+ * 解析单行账号：邮箱----密码----2FA----AT
  * 策略：从右往左剥离（AT → 2FA → 邮箱/密码），
  * 这样即使密码里含连字符（历史遗留数据），也不会切错位。
  * @returns {{status:'ok'|'skip'|'bad', email?:string, password?:string, totp?:string, at?:string, reason?:string}}
  */
-function parseLine(raw) {
+function parseAccountLine(raw) {
   var s = String(raw).trim();
   if (!s) return { status: 'skip', reason: '空行' };
   if (s.charAt(0) === '#' || s.charAt(0) === '/') return { status: 'skip', reason: '注释行' };
   /* 注意：除空行与注释外，一律不静默忽略 —— 解析不了就如实报错，
      宁可让用户看到「第 N 行有问题」，也不能悄悄丢数据。 */
 
-  var at = '', rest = '', m;
+  var tail = splitAtTail(s);
+  if (tail.reason) return { status: 'bad', reason: tail.reason };
+  var at = tail.at, rest = tail.before, m;
 
-  /* 1. 从行尾剥 AT：优先按 JWT 形态识别（access token 是三段式 JWT） */
-  m = s.match(/(eyJ[A-Za-z0-9_\-]*\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+)$/);
-  if (m) {
-    at = m[1];
-    rest = s.slice(0, m.index);
-  } else {
-    /* 兜底：按最后一个分隔符切 */
-    var li = s.lastIndexOf(SEP);
-    if (li < 0) return { status: 'bad', reason: '找不到分隔符 ' + SEP };
-    at = s.slice(li + SEP.length).trim();
-    rest = s.slice(0, li);
-    if (!at) return { status: 'bad', reason: 'AT 段为空' };
+  if (looksLikeWorkbenchMailboxCredential(rest)) {
+    return { status: 'bad', reason: '检测到完整邮箱凭证，请选择「完整邮箱凭证----AT」格式', expectedFormat: 'mailbox' };
   }
 
-  /* 2. 剥尾部残留的分隔符 */
-  rest = rest.replace(/[\s]+$/, '');
-  rest = rest.replace(/-{4}$/, '');
-
-  /* 3. 从行尾剥 2FA：要求前面紧邻分隔符，避免误伤密码 */
+  /* 2. 从行尾剥 2FA：要求前面紧邻分隔符，避免误伤密码 */
   var totp = '';
-  m = rest.match(/-{4}([A-Z2-7]{16,64})$/);
+  m = rest.match(/^(.*)----([A-Z2-7]{16,64})$/);
   if (m) {
-    totp = m[1];
-    rest = rest.slice(0, m.index);
+    rest = m[1];
+    totp = m[2];
   }
 
-  /* 4. 剩下的按「第一个」分隔符切邮箱 / 密码 */
+  /* 3. 剩下的按「第一个」分隔符切邮箱 / 密码 */
   var i = rest.indexOf(SEP);
   if (i < 0) return { status: 'bad', reason: '缺少「邮箱' + SEP + '密码」分隔符', at: at };
   var email = rest.slice(0, i).trim();
   var password = rest.slice(i + SEP.length);
 
   if (!email) return { status: 'bad', reason: '邮箱段为空', at: at };
-  if (email.indexOf('@') < 0) return { status: 'bad', reason: '邮箱格式不对（缺少 @）', at: at };
+  if (!hasEmail(email)) return { status: 'bad', reason: '邮箱格式不对（缺少 @）', at: at };
   if (!password) return { status: 'bad', reason: '密码段为空', at: at };
   if (!at) return { status: 'bad', reason: 'AT 段为空' };
 
@@ -286,43 +345,82 @@ function parseLine(raw) {
 }
 
 /**
- * 拆分整段文本。
- * @param {string} text
- * @param {boolean} alignKeep 无法解析的行是否保留空行以对齐行号
+ * 解析工作台邮箱凭证：完整邮箱凭证----AT。
+ * 邮箱凭证内部可含多个分隔符（refresh_token 也可能含分隔符），因此不重组、原样保留。
  */
-function splitAccounts(text, alignKeep) {
+function parseMailboxCredentialLine(raw) {
+  var s = String(raw).trim();
+  if (!s) return { status: 'skip', reason: '空行' };
+  if (s.charAt(0) === '#' || s.charAt(0) === '/') return { status: 'skip', reason: '注释行' };
+
+  var tail = splitAtTail(s);
+  if (tail.reason) return { status: 'bad', reason: tail.reason };
+  var credential = tail.before;
+  if (looksLikeAccountCredential(credential)) {
+    return { status: 'bad', reason: '检测到账密格式，请选择「邮箱----密码----2FA密钥----AT」格式', expectedFormat: 'account' };
+  }
+  var parts = credential.split(SEP);
+  var email = String(parts[0] || '').trim();
+  if (parts.length < 4) return { status: 'bad', reason: '邮箱凭证至少应包含 4 段', at: tail.at };
+  if (!email) return { status: 'bad', reason: '邮箱段为空', at: tail.at };
+  if (!hasEmail(email)) return { status: 'bad', reason: '邮箱格式不对（缺少 @）', at: tail.at };
+  if (!String(parts[2] || '').trim()) return { status: 'bad', reason: '邮箱凭证缺少 client_id', at: tail.at };
+  if (!parts.slice(3).join(SEP).trim()) return { status: 'bad', reason: '邮箱凭证缺少 refresh_token', at: tail.at };
+  return { status: 'ok', email: email, credential: credential, at: tail.at };
+}
+
+/** 向后兼容的统一入口；缺省仍按原账号格式解析。 */
+function parseLine(raw, format) {
+  return format === 'mailbox' ? parseMailboxCredentialLine(raw) : parseAccountLine(raw);
+}
+
+/**
+ * 解析整段文本。
+ * @param {string} text
+ * @param {'account'|'mailbox'} format 输入格式；缺省为账号格式
+ */
+function splitAccounts(text, format) {
+  var mode = format === 'mailbox' ? 'mailbox' : 'account';
   var lines = stripBom(String(text)).split(/\r\n|\r|\n/);
+  while (lines.length > 1 && !lines[lines.length - 1].trim()) lines.pop();
   var rows = [], okCount = 0, skipCount = 0, badCount = 0;
-  var outA = [], outB = [], issues = [];
+  var outA = [], outB = [], outBad = [], issues = [], formatMismatches = [];
 
   for (var n = 0; n < lines.length; n++) {
-    var r = parseLine(lines[n]);
+    var r = parseLine(lines[n], mode);
     r.lineNo = n + 1;
     r.raw = lines[n];
 
     if (r.status === 'ok') {
       okCount++;
-      var a = r.email + SEP + r.password + (r.totp ? SEP + r.totp : '');
+      var a = mode === 'mailbox'
+        ? r.credential
+        : r.email + SEP + r.password + (r.totp ? SEP + r.totp : '');
       outA.push(a);
       outB.push(r.at);
     } else if (r.status === 'skip') {
       skipCount++;
     } else {
       badCount++;
-      issues.push({ lineNo: n + 1, reason: r.reason, raw: lines[n] });
-      if (alignKeep) { outA.push(''); outB.push(''); }
+      var issue = { lineNo: n + 1, reason: r.reason, raw: lines[n], expectedFormat: r.expectedFormat || '' };
+      issues.push(issue);
+      if (issue.expectedFormat) formatMismatches.push(issue);
+      outBad.push(lines[n]);
     }
     rows.push(r);
   }
 
   return {
+    format: mode,
     rows: rows,
     issues: issues,
+    formatMismatches: formatMismatches,
     okCount: okCount,
     skipCount: skipCount,
     badCount: badCount,
     fileA: outA.join('\r\n') + (outA.length ? '\r\n' : ''),
     fileB: outB.join('\r\n') + (outB.length ? '\r\n' : ''),
+    fileBad: outBad.join('\r\n') + (outBad.length ? '\r\n' : ''),
     countA: outA.length,
     countB: outB.length
   };
@@ -333,8 +431,39 @@ function splitAccounts(text, alignKeep) {
 /* ---------------- 以下为界面逻辑 ---------------- */
 (function () {
   var $ = function (id) { return document.getElementById(id); };
-  var input = $('input'), drop = $('drop'), fileEl = $('file');
+  var input = $('input'), inputBox = $('inputBox'), fileEl = $('file');
   var last = null;
+
+  var formatMeta = {
+    account: {
+      placeholder: '每行一条：邮箱----密码----2FA密钥----AT',
+      hint: '账号模式会输出「邮箱----密码----2FA密钥」与 AT 两个文件。',
+      fileAFormat: '邮箱----密码----2FA密钥',
+      fileAName: '邮箱-密码-2FA.txt'
+    },
+    mailbox: {
+      placeholder: '每行一条：完整邮箱凭证----AT',
+      hint: '邮箱凭证模式会输出「完整邮箱凭证」与 AT 两个文件。',
+      fileAFormat: '完整邮箱凭证',
+      fileAName: '邮箱凭证.txt'
+    }
+  };
+
+  function selectedFormat() {
+    var checked = document.querySelector('input[name="format"]:checked');
+    return checked && checked.value === 'mailbox' ? 'mailbox' : 'account';
+  }
+
+  function updateFormatUi() {
+    var meta = formatMeta[selectedFormat()];
+    input.placeholder = meta.placeholder;
+    $('formatHint').textContent = meta.hint;
+    $('fileAFormat').textContent = meta.fileAFormat;
+    $('dl1').textContent = '下载 ' + meta.fileAName;
+    $('formatAlert').hidden = true;
+    $('resultCard').hidden = true;
+    last = null;
+  }
 
   function setStat() {
     var t = input.value;
@@ -342,24 +471,25 @@ function splitAccounts(text, alignKeep) {
     $('inputStat').textContent = n ? ('共 ' + n + ' 行有效内容') : '0 行';
   }
   input.addEventListener('input', setStat);
+  Array.prototype.forEach.call(document.querySelectorAll('input[name="format"]'), function (el) {
+    el.addEventListener('change', updateFormatUi);
+  });
   setStat();
+  updateFormatUi();
 
   /* ---- 文件选择 / 拖拽 ---- */
   $('pick').addEventListener('click', function () { fileEl.click(); });
-  drop.addEventListener('click', function (e) {
-    if (e.target.tagName !== 'BUTTON') fileEl.click();
-  });
   fileEl.addEventListener('change', function () {
     if (fileEl.files && fileEl.files[0]) readFile(fileEl.files[0]);
     fileEl.value = '';
   });
   ['dragenter', 'dragover'].forEach(function (ev) {
-    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('over'); });
+    inputBox.addEventListener(ev, function (e) { e.preventDefault(); inputBox.classList.add('over'); });
   });
   ['dragleave', 'drop'].forEach(function (ev) {
-    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('over'); });
+    inputBox.addEventListener(ev, function (e) { e.preventDefault(); inputBox.classList.remove('over'); });
   });
-  drop.addEventListener('drop', function (e) {
+  inputBox.addEventListener('drop', function (e) {
     var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
     if (f) readFile(f);
   });
@@ -370,51 +500,50 @@ function splitAccounts(text, alignKeep) {
     fr.readAsText(f, 'utf-8');
   }
 
-  /* ---- 示例 / 清空 ---- */
-  $('demo').addEventListener('click', function () {
-    input.value = [
-      'test001@outlook.com----Ab3xK9mQ2pLw----JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP----eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ0ZXN0MDAxIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c',
-      'test002@outlook.com----Zq7wR1nT5vBc----KRSXG5CTMVRXEZLUKRSXG5CTMVRXEZLU----eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ0ZXN0MDAyIn0.dQw4w9WgXcQ7I6b8N2mK9pL3vR5tY1uA2sD4fG6hJ8k',
-      '# 上面两行是示例，可以删掉',
-      'test003@outlook.com----Mm4pL8kQ3wZx----MFRGGZDFMZTWQ2LKMFRGGZDFMZTWQ2LK----eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ0ZXN0MDAzIn0.aB1cD2eF3gH4iJ5kL6mN7oP8qR9sT0uV1wX2yZ3a'
-    ].join('\n');
-    setStat();
-  });
+  /* ---- 清空 ---- */
   $('clear').addEventListener('click', function () {
     input.value = ''; setStat();
+    $('formatAlert').hidden = true;
     $('resultCard').hidden = true; last = null;
   });
 
-  /* ---- 拆分 ---- */
+  /* ---- 解析 ---- */
   $('run').addEventListener('click', function () {
     var text = input.value;
     if (!text.trim()) { alert('请先粘贴或选择账号文本。'); return; }
 
-    var res = splitAccounts(text, $('align').checked);
+    var res = splitAccounts(text, selectedFormat());
+    var mismatch = res.formatMismatches[0];
+    if (mismatch) {
+      last = null;
+      $('resultCard').hidden = true;
+      var wanted = mismatch.expectedFormat === 'mailbox'
+        ? '完整邮箱凭证----AT'
+        : '邮箱----密码----2FA密钥----AT';
+      $('formatAlertTitle').textContent = '格式选择错误';
+      $('formatAlertText').textContent = '检测到输入内容应使用「' + wanted + '」格式。请重新选择该解析方式后，再点击“开始解析”。';
+      $('formatAlert').hidden = false;
+      $('formatAlert').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (!res.okCount) {
+      last = null;
+      $('resultCard').hidden = true;
+      $('formatAlertTitle').textContent = '无法解析输入内容';
+      $('formatAlertText').textContent = '未识别到任何支持的格式。请确认每条数据为「邮箱----密码----2FA密钥----AT」或「完整邮箱凭证----AT」后，再点击“开始解析”。';
+      $('formatAlert').hidden = false;
+      $('formatAlert').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    $('formatAlert').hidden = true;
     last = res;
 
     $('mOk').textContent = res.okCount;
-    $('mSkip').textContent = res.skipCount;
     $('mBad').textContent = res.badCount;
-    $('c1').textContent = res.countA + ' 行';
-    $('c2').textContent = res.countB + ' 行';
-
-    /* 预览表 */
-    var pv = $('preview'), html = '';
-    var okRows = res.rows.filter(function (r) { return r.status === 'ok'; }).slice(0, 10);
-    if (okRows.length) {
-      html = '<table><thead><tr><th>行</th><th>邮箱</th><th>密码</th><th>2FA</th><th>AT</th></tr></thead><tbody>';
-      okRows.forEach(function (r) {
-        html += '<tr><td>' + r.lineNo + '</td>'
-          + '<td class="mono">' + esc(r.email) + '</td>'
-          + '<td class="mono">' + r.password.length + ' 位</td>'
-          + '<td>' + (r.totp ? '<span class="badge ok">' + r.totp.length + ' 位</span>' : '<span class="badge skip">无</span>') + '</td>'
-          + '<td class="mono">' + r.at.length + ' 位</td></tr>';
-      });
-      html += '</tbody></table>';
-    }
-    $('preview').innerHTML = html;
-    $('previewBox').hidden = !html;
+    $('c1').textContent = res.countA + ' 条';
+    $('c2').textContent = res.countB + ' 条';
+    $('badDownload').hidden = !res.badCount;
+    $('cBad').textContent = res.badCount + ' 条';
 
     /* 问题行 */
     if (res.badCount) {
@@ -451,11 +580,16 @@ function splitAccounts(text, alignKeep) {
     setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 800);
   }
   function ready() {
-    if (!last || !last.okCount) { alert('还没有可下载的内容，请先完成拆分。'); return false; }
+    if (!last || !last.okCount) { alert('还没有可下载的内容，请先完成解析。'); return false; }
     return true;
   }
-  $('dl1').addEventListener('click', function () { if (ready()) download('邮箱-密码-2FA.txt', last.fileA); });
+  $('dl1').addEventListener('click', function () {
+    if (ready()) download(formatMeta[last.format].fileAName, last.fileA);
+  });
   $('dl2').addEventListener('click', function () { if (ready()) download('AT.txt', last.fileB); });
+  $('dlBad').addEventListener('click', function () {
+    if (last && last.badCount) download('解析失败原始行.txt', last.fileBad);
+  });
 
   function copy(btn, text) {
     var done = function () {
