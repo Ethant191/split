@@ -439,13 +439,13 @@ function splitAccounts(text, format) {
       placeholder: '每行一条：邮箱----密码----2FA密钥----AT',
       hint: '账号模式会输出「邮箱----密码----2FA密钥」与 AT 两个文件。',
       fileAFormat: '邮箱----密码----2FA密钥',
-      fileAName: '邮箱-密码-2FA.txt'
+      fileAContent: '邮箱-密码-2FA'
     },
     mailbox: {
       placeholder: '每行一条：完整邮箱凭证----AT',
       hint: '邮箱凭证模式会输出「完整邮箱凭证」与 AT 两个文件。',
       fileAFormat: '完整邮箱凭证',
-      fileAName: '邮箱凭证.txt'
+      fileAContent: '邮箱凭证'
     }
   };
 
@@ -459,7 +459,7 @@ function splitAccounts(text, format) {
     input.placeholder = meta.placeholder;
     $('formatHint').textContent = meta.hint;
     $('fileAFormat').textContent = meta.fileAFormat;
-    $('dl1').textContent = '下载 ' + meta.fileAName;
+    $('dl1').textContent = '下载 ' + meta.fileAContent + '.txt';
     $('formatAlert').hidden = true;
     $('resultCard').hidden = true;
     last = null;
@@ -537,6 +537,7 @@ function splitAccounts(text, format) {
     }
     $('formatAlert').hidden = true;
     last = res;
+    last.batchStamp = makeBatchStamp(new Date());
 
     $('mOk').textContent = res.okCount;
     $('mBad').textContent = res.badCount;
@@ -571,6 +572,18 @@ function splitAccounts(text, format) {
   }
 
   /* ---- 下载 / 复制 ---- */
+  function pad2(value) { return String(value).padStart(2, '0'); }
+  function makeBatchStamp(now) {
+    return now.getFullYear()
+      + pad2(now.getMonth() + 1)
+      + pad2(now.getDate())
+      + '_'
+      + pad2(now.getHours())
+      + pad2(now.getMinutes());
+  }
+  function resultFileName(content, count) {
+    return last.batchStamp + '_' + count + '条_' + content + '.txt';
+  }
   function download(name, text) {
     var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     var url = URL.createObjectURL(blob);
@@ -584,11 +597,13 @@ function splitAccounts(text, format) {
     return true;
   }
   $('dl1').addEventListener('click', function () {
-    if (ready()) download(formatMeta[last.format].fileAName, last.fileA);
+    if (ready()) download(resultFileName(formatMeta[last.format].fileAContent, last.countA), last.fileA);
   });
-  $('dl2').addEventListener('click', function () { if (ready()) download('AT.txt', last.fileB); });
+  $('dl2').addEventListener('click', function () {
+    if (ready()) download(resultFileName('AT', last.countB), last.fileB);
+  });
   $('dlBad').addEventListener('click', function () {
-    if (last && last.badCount) download('解析失败原始行.txt', last.fileBad);
+    if (last && last.badCount) download(resultFileName('解析失败原始行', last.badCount), last.fileBad);
   });
 
   function copy(btn, text) {
